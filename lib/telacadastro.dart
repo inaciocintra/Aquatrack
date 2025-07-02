@@ -15,6 +15,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
   final TextEditingController _telefoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _senhaController = TextEditingController();
+  final TextEditingController _alturaController = TextEditingController(); // Novo controlador para altura
 
   bool _isPasswordVisible = false;
   bool _isEmailNotification = false;
@@ -39,6 +40,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
         'genero': _isMale ? 'Masculino' : 'Feminino',
         'notifica_email': _isEmailNotification,
         'notifica_telefone': _isPhoneNotification,
+        'altura': double.tryParse(_alturaController.text.trim()), // Salva a altura como double
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,6 +92,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
                         },
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _alturaController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Altura (cm)'), // Novo campo de altura
                   ),
                   const SizedBox(height: 16),
                   Row(

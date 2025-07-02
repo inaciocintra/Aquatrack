@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// Removendo imports de Firebase para esta funcionalidade
+// import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:firebase_auth/firebase_auth.dart';
+import 'water_intake_history.dart'; // Importar WaterIntakeHistory
+
+// Variável global para armazenar a meta diária.
+// ATENÇÃO: Esta variável será redefinida ao reiniciar o aplicativo.
+double globalDailyWaterGoal = 0.0;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,136 +16,62 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Controladores para os campos de texto
   final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
 
-  // Variáveis para os seletores de nível de atividade e clima
-  String? _selectedActivityLevel;
-  String? _selectedClimate;
-
-  // Variáveis para armazenar o resultado da API e o estado do carregamento/erro
-  String? _dailyWaterIntake;
+  String? _displayDailyWaterGoal; // Para exibir a meta calculada na tela
   bool _isLoading = false;
   String? _errorMessage;
-
-  // Instância do Firebase Firestore
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
-    // Você pode carregar os dados do usuário do Firebase aqui ao iniciar a tela, se desejar
-    _loadUserSettings();
+    // Carregar a meta global e exibir, se houver
+    _displayDailyWaterGoal = globalDailyWaterGoal.toStringAsFixed(2);
   }
 
   @override
   void dispose() {
     _weightController.dispose();
+    _heightController.dispose();
     super.dispose();
   }
 
-  // Função para carregar as configurações do usuário do Firebase
-  Future<void> _loadUserSettings() async {
-    try {
-      // Supondo que você tenha um ID de usuário, ou que você esteja salvando
-      // as configurações sob um documento fixo (ex: 'user_settings')
-      // Para simplificar, vou usar um ID fixo 'currentUserSettings'
-      // Em um app real, você usaria FirebaseAuth para obter o ID do usuário logado.
-      DocumentSnapshot userSettings = await _firestore.collection('userSettings').doc('currentUserSettings').get();
-
-      if (userSettings.exists) {
-        Map<String, dynamic> data = userSettings.data() as Map<String, dynamic>;
-        setState(() {
-          _weightController.text = data['weight']?.toString() ?? '';
-          _selectedActivityLevel = data['activityLevel'];
-          _selectedClimate = data['climate'];
-          _dailyWaterIntake = data['dailyWaterIntake']; // Exibe o último cálculo, se houver
-        });
-      }
-    } catch (e) {
-      print("Erro ao carregar configurações do usuário: $e");
-      setState(() {
-        _errorMessage = "Erro ao carregar configurações: $e";
-      });
-    }
-  }
-
-
-  // Função para chamar a API e calcular a ingestão diária de água
-  Future<void> _calculateDailyWaterIntake() async {
+  // Função para calcular e armazenar a meta diária de água 
+  Future<void> _calculateAndSaveDailyWaterIntake() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _dailyWaterIntake = null;
+      _displayDailyWaterGoal = null;
     });
 
     final double? weight = double.tryParse(_weightController.text);
+    final double? height = double.tryParse(_heightController.text);
 
-    if (weight == null || _selectedActivityLevel == null || _selectedClimate == null) {
+    if (weight == null || height == null) {
       setState(() {
-        _errorMessage = "Por favor, preencha todos os campos: Peso, Nível de Atividade e Clima.";
+        _errorMessage = "Por favor, preencha o Peso e a Altura.";
         _isLoading = false;
       });
       return;
     }
 
-    // Mapeamento dos valores selecionados para os valores esperados pela API
-    final String activityLevelApi = _selectedActivityLevel!.toLowerCase();
-    final String climateApi = _selectedClimate!.toLowerCase();
+    // Calcula a meta diária de água com base no peso e altura
+    // Exemplo: 35ml por kg de peso + um ajuste de 5ml por cm de altura
+    // Ajuste a fórmula conforme sua necessidade.
+    double calculatedWaterGoal = (weight * 0.035) + (height * 0.005);
+    
+    setState(() {
+      _displayDailyWaterGoal = calculatedWaterGoal.toStringAsFixed(2);
+      globalDailyWaterGoal = calculatedWaterGoal; // Salva na variável global
+      _isLoading = false;
+    });
 
-    final String url =
-        'https://health-calculator-api.p.rapidapi.com/dwi?weight=$weight&activity_level=$activityLevelApi&climate=$climateApi&unit=liters';
-    final Map<String, String> headers = {
-      'x-rapidapi-host': 'health-calculator-api.p.rapidapi.com',
-      'x-rapidapi-key': '5189ad2817msh80714bb28d88228p14a2d6jsnc894cbd0cb31', // Sua chave da RapidAPI
-    };
-
-    try {
-      final response = await http.get(Uri.parse(url), headers: headers);
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        setState(() {
-          _dailyWaterIntake = data['daily_water_intake_liters']?.toStringAsFixed(2) ?? 'N/A';
-          _isLoading = false;
-          // Salvar os dados no Firebase após o cálculo bem-sucedido
-          _saveUserSettings(weight, activityLevelApi, climateApi, _dailyWaterIntake!);
-        });
-      } else {
-        setState(() {
-          _errorMessage = 'Erro ao chamar a API: ${response.statusCode} - ${response.body}';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Erro na requisição: $e';
-        _isLoading = false;
-      });
-    }
+    // Removido o código de salvamento no Firebase Firestore
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Meta de água calculada e salva!')),
+    );
   }
-
-  // Função para salvar os dados do usuário no Firebase
-  Future<void> _saveUserSettings(double weight, String activityLevel, String climate, String dailyWaterIntake) async {
-    try {
-      await _firestore.collection('userSettings').doc('currentUserSettings').set({
-        'weight': weight,
-        'activityLevel': activityLevel,
-        'climate': climate,
-        'dailyWaterIntake': dailyWaterIntake,
-        'timestamp': FieldValue.serverTimestamp(), // Adiciona um timestamp da última atualização
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configurações salvas com sucesso!')),
-      );
-    } catch (e) {
-      print("Erro ao salvar configurações no Firebase: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao salvar configurações: $e')),
-      );
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -156,24 +87,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Lembretes de água e Dark Mode (mantidos do seu código original)
               SwitchListTile(
-                title: const Text("Water Intake Reminders"),
-                value: true, // Você precisaria gerenciar o estado real aqui
-                onChanged: (bool value) {
-                  // Implementar lógica para ativar/desativar lembretes
-                },
-              ),
-              SwitchListTile(
-                title: const Text("Dark Mode"),
-                value: true, // Você precisaria gerenciar o estado real aqui
-                onChanged: (bool value) {
-                  // Implementar lógica para ativar/desativar modo escuro
-                },
+                title: const Text("Notificações para lembrar de beber Água"),
+                value: true,
+                onChanged: (bool value) {},
               ),
               const SizedBox(height: 20),
 
-              // Campo de entrada de Peso
               TextField(
                 controller: _weightController,
                 keyboardType: TextInputType.number,
@@ -185,55 +105,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Dropdown para Nível de Atividade
-              DropdownButtonFormField<String>(
-                value: _selectedActivityLevel,
+              TextField(
+                controller: _heightController,
+                keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  labelText: 'Nível de Atividade',
+                  labelText: 'Altura (cm)',
+                  hintText: 'Ex: 175',
                   border: OutlineInputBorder(),
                 ),
-                hint: const Text('Selecione seu nível de atividade'),
-                items: <String>['sedentary', 'light', 'moderate', 'active']
-                    .map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value[0].toUpperCase() + value.substring(1)), // Capitaliza a primeira letra
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedActivityLevel = newValue;
-                  });
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // Dropdown para Clima
-              DropdownButtonFormField<String>(
-                value: _selectedClimate,
-                decoration: const InputDecoration(
-                  labelText: 'Clima',
-                  border: OutlineInputBorder(),
-                ),
-                hint: const Text('Selecione o clima'),
-                items: <String>['normal', 'hot', 'cold']
-                    .map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value[0].toUpperCase() + value.substring(1)), // Capitaliza a primeira letra
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedClimate = newValue;
-                  });
-                },
               ),
               const SizedBox(height: 30),
 
-              // Botão para calcular e salvar
               ElevatedButton(
-                onPressed: _isLoading ? null : _calculateDailyWaterIntake,
+                onPressed: _isLoading ? null : _calculateAndSaveDailyWaterIntake,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -245,14 +129,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        "Calcular e Salvar Ingestão de Água",
+                        "Calcular e Salvar Meta de Água",
                         style: TextStyle(fontSize: 18),
                       ),
               ),
               const SizedBox(height: 20),
 
-              // Exibição do resultado do cálculo ou mensagem de erro
-              if (_dailyWaterIntake != null && !_isLoading)
+              if (_displayDailyWaterGoal != null && !_isLoading)
                 Card(
                   elevation: 2,
                   color: Colors.blue.shade50,
@@ -262,13 +145,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       children: [
                         const Text(
-                          "Ingestão Diária de Água Recomendada:",
+                          "Meta Diária de Água Calculada:",
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          '$_dailyWaterIntake Litros',
+                          '$_displayDailyWaterGoal Litros',
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -280,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-
+              
               if (_errorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -293,6 +176,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 1,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const WaterIntakeHistory()),
+            );
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications),
+            label: 'Reminders',
+          ),
+        ],
       ),
     );
   }
